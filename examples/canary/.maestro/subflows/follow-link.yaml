@@ -29,7 +29,8 @@ appId: ${APP_ID || 'dev.angularnative.canary'}
                 notVisible: 'Open'
                 timeout: 10000
 # A starved CI simulator has taken over a minute from the answer to the screen: 23s to hand the link
-# to the app, then half a minute with its main thread busy mounting the screen.
-- extendedWaitUntil:
-    visible: '${SHOWS}'
-    timeout: 90000
+# to the app, then half a minute before the screen was there.
+- runFlow:
+    file: wait-for.yaml
+    env:
+      SHOWS: '${SHOWS}'

@@ -1,0 +1,28 @@
+# Waits for text on the screen a link or a tap has just opened. `SHOWS` is the text.
+#
+# A starved CI emulator or simulator has taken over a minute to show a screen, so the wait is long.
+# A CI simulator can also stop drawing frames, and a push or a tab switch then never finishes:
+# UIKit keeps the screen it leaves in the accessibility tree, so the new one is on screen but not in
+# the hierarchy until a screenshot draws a frame. Reading the hierarchy takes no screenshot, so on
+# iOS the wait takes one now and then: waitForAnimationToEnd compares screenshots.
+appId: ${APP_ID || 'dev.angularnative.canary'}
+---
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: '${SHOWS}'
+          timeout: 90000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - retry:
+          maxRetries: 3
+          commands:
+            - waitForAnimationToEnd:
+                timeout: 5000
+            - extendedWaitUntil:
+                visible: '${SHOWS}'
+                timeout: 18000
