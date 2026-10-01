@@ -230,7 +230,10 @@ A custom property can hold a font stack (read as its first family, as `font-fami
 unitless line-height, a ratio for `aspect-ratio`, a whole `box-shadow` list, or bare color
 channels for `rgba(var(--channels), <alpha>)`, which is how Bootstrap writes its color utilities.
 A shorthand may mix `var()`s and written values: `padding: var(--y) var(--x)`,
-`border: var(--width) solid var(--colour)`. `flex: var(--grow)` is `flex: <number>`: it grows by
+`border: var(--width) solid var(--colour)`. `background: var(--surface)` is read as
+`background-color`, the one part of that shorthand native has; a token that is no colour unsets it,
+as a browser unsets the shorthand, and a gradient in the token stays out. With anything beside the
+token, `background: var(--surface) none`, the shorthand is refused. `flex: var(--grow)` is `flex: <number>`: it grows by
 the token, shrinks by 1, and starts from a basis of 0, once the token is set. With no token it is
 `flex`'s initial value, `0 1 auto`, whatever a weaker rule set, as on the web, where a `var()` that
 cannot be substituted gives the property its initial value; `flex-grow`, `flex-shrink` and

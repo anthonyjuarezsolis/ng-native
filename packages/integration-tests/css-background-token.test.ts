@@ -1,0 +1,100 @@
+/**
+ * `background: var(--bg)`: the token is read on device as the background colour, the one part of
+ * the shorthand native has. A token that is no colour unsets it, as Chrome unsets every longhand
+ * of a shorthand whose token cannot be substituted.
+ *
+ * Chrome's values for the stylesheet path are in the oracle (`css-oracle-cases.ts`); this covers a
+ * token set on an element, and one that changes after the first commit.
+ */
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { createRequire } from 'node:module';
+import { Engine } from '@ng-native/fabric';
+import { createFakeFabric } from '@ng-native/testing';
+
+const require = createRequire(import.meta.url);
+const { compileCss } = require('@ng-native/metro/css/compile.cjs');
+
+/** A parent wearing `parent` around a child wearing `a`, with every warning collected. */
+function tree(css: string, parent: string[] = []) {
+  const warnings: string[] = [];
+  const sheet = compileCss(css, 'background', { onUnsupported: (m: string) => warnings.push(m) });
+  const fabric = createFakeFabric();
+  const engine = new Engine(fabric, 1);
+  const outer = engine.createElement('view', sheet);
+  for (const name of parent) engine.addClass(outer, name);
+  const node = engine.createElement('view', sheet);
+  engine.addClass(node, 'a');
+  engine.appendChild(outer, node);
+  engine.appendChild(engine.root, outer);
+  engine.commit();
+  const background = () => fabric.committed[0]!.children[0]!.props['backgroundColor'];
+  return { engine, outer, node, background, warnings };
+}
+
+describe('background: var()', () => {
+  it('compiles with no warning, and reads a token from the stylesheet as the colour', () => {
+    const { background, warnings } = tree('.p { --bg: #f00 } .a { background: var(--bg) }', ['p']);
+    assert.deepEqual(warnings, []);
+    assert.equal(background(), 'rgb(255, 0, 0)');
+  });
+
+  it('reads a token set on the element, and follows it when it changes', () => {
+    const { engine, node, background } = tree('.a { background: var(--bg, #000) }');
+    assert.equal(background(), 'rgb(0, 0, 0)', 'the fallback, until the token is set');
+    engine.setCustomProperty(node, '--bg', 'rgb(0, 128, 0)');
+    engine.commit();
+    assert.equal(background(), 'rgb(0, 128, 0)');
+    engine.setCustomProperty(node, '--bg', 'rgb(0, 0, 255)');
+    engine.commit();
+    assert.equal(background(), 'rgb(0, 0, 255)');
+  });
+
+  it('follows a token on the parent when it changes', () => {
+    const { engine, outer, background } = tree(
+      '.p { --bg: #f00 } .q { --bg: #0f0 } .a { background: var(--bg) }',
+      ['p'],
+    );
+    assert.equal(background(), 'rgb(255, 0, 0)');
+    engine.removeClass(outer, 'p');
+    engine.addClass(outer, 'q');
+    engine.commit();
+    assert.equal(background(), 'rgb(0, 255, 0)');
+  });
+
+  it('unsets the colour for a token that is no colour, over a weaker rule', () => {
+    const { engine, node, background } = tree(
+      '.a { background-color: #f00 } .a { --bg: 2px; background: var(--bg) }',
+    );
+    assert.equal(background(), undefined, 'the declaration wins the cascade and is unset');
+    engine.setCustomProperty(node, '--bg', 'rgb(0, 0, 255)');
+    engine.commit();
+    assert.equal(background(), 'rgb(0, 0, 255)');
+  });
+
+  it('leaves the colour unset for a token holding a gradient, which is refused where it is set', () => {
+    const { background, warnings } = tree(
+      '.a { background-color: #f00 } .a { --bg: linear-gradient(red, blue); background: var(--bg) }',
+    );
+    assert.equal(background(), undefined, 'no colour to read, so the declaration is unset');
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /'--bg' has a value native cannot express/);
+  });
+
+  it('reads a color-mix() of a token, worked out on device', () => {
+    // Chrome serialises a mixed colour as `color(srgb ...)`, which the oracle compares as text, so
+    // the mix is checked here: 50% of rgb(0, 0, 200) and black is rgb(0, 0, 100).
+    const { background, warnings } = tree(
+      '.a { --bg: rgb(0, 0, 200); background: color-mix(in srgb, var(--bg), rgb(0, 0, 0)) }',
+    );
+    assert.deepEqual(warnings, []);
+    assert.equal(background(), 'rgb(0, 0, 100)');
+  });
+
+  it('still refuses the shorthand with anything beside the token', () => {
+    const { background, warnings } = tree('.a { background: var(--bg) none }');
+    assert.equal(background(), undefined);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /'background' mixes var\(\) with other values/);
+  });
+});

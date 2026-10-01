@@ -547,4 +547,34 @@ export const CASES: OracleCase[] = [
     tree: { name: 'view', children: [probe({ name: 'view' })] },
     extra: ['display'],
   },
+  {
+    name: 'background: var() of a colour token is the background colour',
+    css: '#probe { --bg: rgb(1, 0, 0); background: var(--bg) }',
+    tree: probe(),
+  },
+  {
+    name: 'background: var() of a token set on the parent',
+    css: '.outer { --bg: rgb(2, 0, 0) } #probe { background: var(--bg) }',
+    tree: { name: 'view', classes: ['outer'], children: [probe()] },
+  },
+  {
+    name: 'background: var() beats a weaker background-color',
+    css: '#probe { background-color: rgb(3, 0, 0) } #probe.c { --bg: rgb(4, 0, 0); background: var(--bg) }',
+    tree: probe({ classes: ['c'] }),
+  },
+  {
+    name: 'background: var() falls back to a written colour when the token is unset',
+    css: '#probe { background: var(--missing, rgb(5, 0, 0)) }',
+    tree: probe(),
+  },
+  {
+    name: 'background: var() of a token that is no colour unsets a weaker background-color',
+    css: '#probe { background-color: rgb(6, 0, 0) } #probe.c { --bg: 2px; background: var(--bg) }',
+    tree: probe({ classes: ['c'] }),
+  },
+  {
+    name: 'background: var() of an unset token with no fallback unsets a weaker background-color',
+    css: '#probe { background-color: rgb(7, 0, 0) } #probe.c { background: var(--missing) }',
+    tree: probe({ classes: ['c'] }),
+  },
 ];

@@ -1917,6 +1917,8 @@ function propsFor(property) {
  */
 const SPELLED_OUT = {
   gap: ['rowGap', 'columnGap'],
+  // A token in the shorthand is read as its colour: see `KINDS`.
+  background: ['backgroundColor'],
   'border-color': ['borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor'],
   'border-inline-color': ['borderLeftColor', 'borderRightColor'],
   'border-block-color': ['borderTopColor', 'borderBottomColor'],
@@ -1939,6 +1941,11 @@ const KINDS = {
   'font-weight': 'weight',
   // A keyword the engine reads as a display native has, or unsets display for.
   display: 'display',
+  // The colour is the only part of the shorthand native has, and a token is one value, so
+  // `background: var(--surface)` is `background-color: var(--surface)`. A token that is no colour
+  // unsets it, as Chrome unsets every longhand of a shorthand whose token cannot be substituted;
+  // a gradient in the token stays out, where Chrome would paint it as the image.
+  background: 'color',
 };
 
 function kindOf(property) {
