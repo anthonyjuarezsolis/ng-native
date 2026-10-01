@@ -56,15 +56,25 @@ appId: ${APP_ID || 'dev.angularnative.canary'}
     env:
       LINK: canary://tabs
       SHOWS: 'Library'
-# Each step waits for what it acts on (follow-link waits for the screen it opens), and a tap that
-# changed nothing is tried again: a tap on a tab bar that was still settling switched nothing.
-- tapOn:
-    text: 'Search'
-    retryTapIfNoChange: true
-- runFlow:
-    file: ../subflows/wait-for.yaml
-    env:
-      SHOWS: 'Type something, then switch tabs'
+# Each step waits for what it acts on (follow-link waits for the screen it opens). A tab bar still
+# settling has dropped a tap, and retryTapIfNoChange missed it when something else on screen
+# changed, so the tap is tried again while the tab's text is not there. A second tap on a tab
+# already chosen does nothing.
+- retry:
+    maxRetries: 3
+    commands:
+      - runFlow:
+          when:
+            notVisible: 'Type something, then switch tabs'
+          commands:
+            - tapOn:
+                text: 'Search'
+                retryTapIfNoChange: true
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - extendedWaitUntil:
+          visible: 'Type something, then switch tabs'
+          timeout: 18000
 - runFlow: ../subflows/no-error-screen.yaml
 
 # Tailwind utilities that combine on one element, among them an Android-only drop shadow with a
