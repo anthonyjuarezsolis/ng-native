@@ -367,10 +367,11 @@ function withChunksOutsideServerRoot(config) {
 
 /**
  * @param {object} config a Metro config, usually from `getDefaultConfig(__dirname)`
- * @param {{ workspaceRoot?: string, projectRoot?: string }} [options]
+ * @param {{ workspaceRoot?: string, projectRoot?: string, libraryStyles?: string[] }} [options]
  *   `workspaceRoot` for a monorepo, where the framework packages live outside the app's own
  *   `node_modules` and Metro has to be told to watch them. An app installing from npm needs
- *   neither and should pass nothing.
+ *   neither and should pass nothing. `libraryStyles` names the npm packages whose components'
+ *   CSS is compiled into native sheets, as the app's own is; a library not named draws unstyled.
  */
 /**
  * A hash of the compiler's own sources.
@@ -435,6 +436,57 @@ function watchCompiler(dir, fingerprint) {
   watcher.unref?.();
 }
 
+/**
+ * The `libraryStyles` list as given, checked, or nothing when there is none.
+ *
+ * It is a list of package names and nothing else, because a wrong shape here would reach the
+ * transformer as a list that matches no file, and the library would draw unstyled with no word
+ * about why - the silence the option exists to end.
+ */
+function libraryStylesOf(options) {
+  const { libraryStyles } = options;
+  if (libraryStyles === undefined) return undefined;
+  const names = Array.isArray(libraryStyles)
+    ? libraryStyles.every((name) => typeof name === 'string' && name.trim())
+    : false;
+  if (!names) {
+    throw new Error(
+      '[angular-native] libraryStyles must be a list of npm package names, such as ' +
+        `["@acme/ui"]; got ${JSON.stringify(libraryStyles)}.`,
+    );
+  }
+  return libraryStyles.length ? [...new Set(libraryStyles)] : undefined;
+}
+
+/**
+ * A library's component CSS, compiled on the way through the linker. The list travels to the
+ * transformer through the worker `withAngularNative` installs, which is the only path there is
+ * (see `transform-worker.cjs`), so in front of any other worker the option would quietly do nothing.
+ *
+ * The list goes into `cacheVersion` as well, as the compiler's fingerprint does. A transform is
+ * cached against the file and that version, and the transformer config is in no key of Metro's
+ * here - Expo's worker has no `getCacheKey` - so without this, naming a package would leave every
+ * file of it cached as it was transformed before, unstyled, until a `--clear`.
+ */
+function recordLibraryStyles(config, options) {
+  const libraryStyles = libraryStylesOf(options);
+  if (!libraryStyles) return;
+  if (config.transformerPath !== require.resolve('./transform-worker.cjs')) {
+    throw new Error(
+      "[angular-native] libraryStyles needs this preset in front of Expo's transform worker, " +
+        `and the config has transformerPath "${config.transformerPath}" instead. Start from ` +
+        "getDefaultConfig(__dirname) from 'expo/metro-config', or leave transformerPath to it.",
+    );
+  }
+  config.transformer.angularNativeLibraryStyles = libraryStyles;
+  config.transformer.cacheVersion = [
+    config.transformer.cacheVersion,
+    `library-styles-${[...libraryStyles].sort().join(',')}`,
+  ]
+    .filter(Boolean)
+    .join('-');
+}
+
 function withAngularNative(config, options = {}) {
   const { workspaceRoot, projectRoot = config.projectRoot } = options;
 
@@ -450,6 +502,8 @@ function withAngularNative(config, options = {}) {
     );
     config.transformerPath = require.resolve('./transform-worker.cjs');
   }
+
+  recordLibraryStyles(config, options);
 
   // So a change to the compiler invalidates every cached transform rather than only the files
   // that happen to be edited alongside it.

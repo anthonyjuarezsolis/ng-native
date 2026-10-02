@@ -812,6 +812,58 @@ describe('the Metro preset', () => {
   });
 });
 
+describe("a library's component CSS", () => {
+  const EXPO = '/app/node_modules/@expo/metro-config/build/transform-worker/transform-worker.js';
+
+  it("records the packages on the transformer config, and in Metro's cacheVersion", () => {
+    const config = base();
+    config.transformerPath = EXPO;
+    withAngularNative(config, { libraryStyles: ['x-ui', '@acme/ui', 'x-ui'] });
+    assert.deepEqual(
+      (config.transformer as { angularNativeLibraryStyles?: string[] }).angularNativeLibraryStyles,
+      ['x-ui', '@acme/ui'],
+    );
+    // Sorted, so the order the app wrote them in is not a reason to start the cache afresh.
+    assert.match(
+      (config.transformer as { cacheVersion?: string }).cacheVersion!,
+      /library-styles-@acme\/ui,x-ui/,
+    );
+  });
+
+  it('records nothing when no package is named, so the cache key is as it was', () => {
+    for (const options of [{}, { libraryStyles: [] }]) {
+      const config = base();
+      config.transformerPath = EXPO;
+      withAngularNative(config, options);
+      assert.equal('angularNativeLibraryStyles' in config.transformer, false);
+      assert.doesNotMatch(
+        (config.transformer as { cacheVersion?: string }).cacheVersion!,
+        /library-styles/,
+      );
+    }
+  });
+
+  it('refuses a list that is not package names, rather than matching nothing in silence', () => {
+    for (const libraryStyles of ['@acme/ui', [''], [1], [{ name: '@acme/ui' }]]) {
+      const config = base();
+      config.transformerPath = EXPO;
+      assert.throws(
+        () => withAngularNative(config, { libraryStyles: libraryStyles as string[] }),
+        /libraryStyles must be a list of npm package names/,
+      );
+    }
+  });
+
+  it("refuses the option in front of a transform worker that is not Expo's, which it cannot reach", () => {
+    const config = base();
+    config.transformerPath = '/app/my-worker.js';
+    assert.throws(
+      () => withAngularNative(config, { libraryStyles: ['@acme/ui'] }),
+      /libraryStyles needs this preset in front of Expo's transform worker.*my-worker\.js/,
+    );
+  });
+});
+
 describe("the tsconfig's custom conditions", () => {
   it('adds each once, beside the conditions Metro already has, and never react-native', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'conditions-'));

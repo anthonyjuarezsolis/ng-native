@@ -131,6 +131,8 @@ function angularOrSyntaxError(params) {
     return transformAngular(params.src, params.filename, {
       dev: params.options?.dev === true,
       platform: params.options?.platform,
+      // From the preset's `libraryStyles`, by way of the transform worker: see `transform-worker.cjs`.
+      libraryStyles: params.options?.customTransformOptions?.angularNativeLibraryStyles,
     });
   } catch (error) {
     try {

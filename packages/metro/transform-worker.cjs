@@ -48,9 +48,31 @@ function domComponentPage(filename, options) {
   return isAngularDomComponent(src) ? Buffer.from(domComponentEntry(relative)) : null;
 }
 
+/**
+ * The preset's `libraryStyles`, carried to the babel transformer in the one place Metro lets it
+ * through: `customTransformOptions`.
+ *
+ * The babel transformer is handed a bundle's transform options and nothing of the transformer
+ * config, so a setting made in `metro.config.js` has no way to reach it on its own. This worker is
+ * handed both, and puts the setting where the transformer looks. Metro computed a file's cache key
+ * before this runs, so the list is in `cacheVersion` as well, where the preset puts it.
+ */
+function withLibraryStyles(config, options) {
+  const packages = config.angularNativeLibraryStyles;
+  if (!Array.isArray(packages) || !packages.length) return options;
+  return {
+    ...options,
+    customTransformOptions: {
+      ...options.customTransformOptions,
+      angularNativeLibraryStyles: packages,
+    },
+  };
+}
+
 module.exports = {
   transform(config, projectRoot, filename, data, options) {
     const expo = upstreamPath(config, projectRoot);
+    options = withLibraryStyles(config, options);
     const page = domComponentPage(filename, options);
     if (page) return innerWorker(expo).transform(config, projectRoot, filename, page, options);
 

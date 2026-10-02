@@ -37,6 +37,11 @@ module.exports = withAngularNative(getDefaultConfig(__dirname), {
 });
 ```
 
+A component library from npm draws unstyled by default: its CSS is written for a browser, and
+nothing compiles it. Name the packages whose component CSS should be compiled into native sheets,
+as the app's own is, with `{ libraryStyles: ['@acme/ui'] }`; what native cannot express is dropped
+under a build warning. See [Configuration](https://ng-native.com/packages/metro/configuration).
+
 ## What's in the package
 
 - `./config.cjs` - `withAngularNative`, the Metro config preset.

@@ -835,11 +835,132 @@ function compileTwice(src, filename, compilerOptions) {
  * Every Angular library on npm ships partial-compiled; without the linker they fail at runtime,
  * not at build time. A library's component CSS is written for a browser, so only a web build,
  * which has one to read it, or a dev build, which keeps it as the app's own, leaves it in.
+ *
+ * A library the app opted in with `libraryStyles` gets what the app's own components get: each
+ * component's CSS compiled into the sheet on `ɵnativeStyles`, with what native cannot express
+ * dropped under a warning. Without the opt-in a library's components draw with no styles and no
+ * word about it, which is what the option exists to make loud.
  */
 function link(src, filename, options) {
   const { code } = linkAngularPackageSync(src, filename);
   const strip = options.dev !== true && options.platform !== 'web';
-  return { code: strip ? stripComponentStyles(code) : code, dependencies: [] };
+  const sheets = optedIn(filename, options)
+    ? libraryStyleBlock(src, filename, options.platform)
+    : '';
+  return { code: (strip ? stripComponentStyles(code) : code) + sheets, dependencies: [] };
+}
+
+/** Whether a native build compiles this file's component CSS: its package is in `libraryStyles`. */
+function optedIn(filename, options) {
+  const packages = options.libraryStyles;
+  if (options.platform === 'web' || !Array.isArray(packages) || !packages.length) return false;
+  const name = packageNameOf(filename);
+  return name !== null && packages.includes(name);
+}
+
+/**
+ * The npm package a file belongs to: the last `node_modules/<name>/` on its path, which is also
+ * the right one under pnpm (`node_modules/.pnpm/<name>@<version>/node_modules/<name>/`), or else
+ * the `name` of the nearest `package.json` above it, which is where a linked workspace package
+ * says who it is. Metro names a file relative to the project root, which is the worker's directory.
+ */
+function packageNameOf(filename) {
+  const absolute = path.resolve(filename).split(path.sep).join('/');
+  // The closing slash is looked ahead to, not taken: it opens the next `node_modules` on the path.
+  const owners = [...absolute.matchAll(/\/node_modules\/((?:@[^/]+\/)?[^/@.][^/]*)(?=\/)/g)];
+  if (owners.length) return owners[owners.length - 1][1];
+  return manifestName(projectRoot(absolute));
+}
+
+/** The `name` in a directory's `package.json`, read once per directory, or null without one. */
+const MANIFEST_NAMES = new Map();
+
+function manifestName(directory) {
+  if (MANIFEST_NAMES.has(directory)) return MANIFEST_NAMES.get(directory);
+  let name = null;
+  try {
+    const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
+    if (typeof manifest.name === 'string') name = manifest.name;
+  } catch {
+    // No manifest, or not JSON: a file nothing claims, which no package name matches.
+  }
+  MANIFEST_NAMES.set(directory, name);
+  return name;
+}
+
+const DECLARE_COMPONENT = 'ɵɵngDeclareComponent(';
+
+/**
+ * Compile each `ɵɵngDeclareComponent({ type: X, ..., styles: [...] })`'s CSS into X's sheet, as
+ * `styleBlock` does for a component the compiler sees.
+ *
+ * Read from the file as shipped, before the linker: the linker shims the CSS for emulated
+ * encapsulation, `[_nghost-%COMP%]`, and that `%` is no selector lightningcss can tokenize. A
+ * declaration's `type` is its class, so the sheet hangs off the same name the linked definition
+ * belongs to. Only a `styles` that is a list of string literals is read, which is how the Angular
+ * compiler writes it; anything else is left alone rather than guessed at.
+ */
+function libraryStyleBlock(src, filename, platform) {
+  const warn = buildWarnings();
+  const blocks = [];
+  for (
+    let at = src.indexOf(DECLARE_COMPONENT);
+    at !== -1;
+    at = src.indexOf(DECLARE_COMPONENT, at + 1)
+  ) {
+    const declared = declaredStyles(src, at, filename);
+    if (!declared) continue;
+    const css = declared.parts.map((part) => part.text).join('\n');
+    const sheet = componentSheet(css, filename, declared.type, platform, declared.parts, warn);
+    if (sheet) blocks.push(`${declared.type}["ɵnativeStyles"] = ${literal(sheet)};`);
+  }
+  return blocks.length ? `\n${blocks.join('\n')}\n` : '';
+}
+
+/**
+ * The class and the stylesheets of the component declared at `at`, each sheet with the line of
+ * the file its literal starts on, or null when the declaration has no styles to read.
+ */
+function declaredStyles(src, at, filename) {
+  const end = matchingClose(src, at + DECLARE_COMPONENT.length - 1, '(', ')');
+  if (end === -1) return null;
+  const call = src.slice(at, end);
+  // The first `type:` names the class; an input called `type` comes later, as a string or an object.
+  const type = /\btype:\s*([A-Za-z_$][\w$]*)\s*,/.exec(call);
+  const styles = /\bstyles:\s*\[/.exec(call);
+  if (!type || !styles) return null;
+  const open = at + styles.index + styles[0].length - 1;
+  const listEnd = literalEnd(src, open);
+  if (listEnd === -1) return null;
+  const parts = [];
+  for (let i = open + 1; i < listEnd - 1;) {
+    if (/[\s,]/.test(src[i])) {
+      i++;
+      continue;
+    }
+    const close = stringEnd(src, i);
+    const text = stringLiteralValue(src.slice(i, close));
+    if (text) parts.push({ text, file: filename, line: src.slice(0, i).split('\n').length });
+    i = close;
+  }
+  return parts.length ? { type: type[1], parts } : null;
+}
+
+/** The escapes a JavaScript string literal can hold, each to the character it stands for. */
+const ESCAPES = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0' };
+
+/** A JavaScript string literal, quotes and all, as the string it means. */
+function stringLiteralValue(source) {
+  return source
+    .slice(1, -1)
+    .replace(
+      /\\(u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|\r\n|[\s\S])/g,
+      (_, escaped, brace, four, two) => {
+        if (brace || four || two) return String.fromCodePoint(parseInt(brace ?? four ?? two, 16));
+        if (/^(\r\n|\n|\r|\u2028|\u2029)$/.test(escaped)) return '';
+        return ESCAPES[escaped] ?? escaped;
+      },
+    );
 }
 
 /**

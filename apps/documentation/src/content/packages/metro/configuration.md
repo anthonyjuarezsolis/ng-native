@@ -90,6 +90,36 @@ A `styles` entry the compiler cannot read from the component's own file, such as
 constant or a concatenation with `+`, also fails the build, naming the component and the entry.
 [What `styles` can be](/packages/fabric/css-engine) lists the forms that compile.
 
+### A library's component CSS
+
+A component library from npm arrives partial-compiled and goes through Angular's linker, not the
+compiler above, and its CSS stays as it was written: for a browser. By default nothing compiles it,
+so a library's components draw with no styles and no warning. Name the packages whose CSS you want
+compiled, and each of their components gets a sheet the way yours do:
+
+```js
+module.exports = withAngularNative(getDefaultConfig(__dirname), {
+  libraryStyles: ['@acme/ui'],
+});
+```
+
+The CSS is read from the file as the library shipped it, before the linker shims it for emulated
+encapsulation, so a `:host([data-tone="warm"])` rule compiles to the host attribute match it means.
+What native cannot express is dropped under the same warnings as your own CSS, naming the library's
+file, the line and the component; a library written for a browser can produce a long list, and
+each line is a declaration that does nothing on a device. The rules a library writes for a browser
+and native reads differently - `display: flex` with the row direction a browser gives it, `:hover`,
+`position: fixed` - are the same ones [what CSS reaches a device](/packages/fabric/supported-css)
+lists for your own CSS.
+
+A package is named as it is imported, `@acme/ui`, and matched by the `node_modules/@acme/ui/` on a
+file's path, or by the `name` in the nearest `package.json` for a linked workspace library. A
+dependency of the library, under its own `node_modules`, is not the library. The list goes into
+Metro's `cacheVersion`, so changing it starts the cache afresh. The option needs the preset's transform
+worker in front of Expo's, which is how the list reaches the transformer; with a `transformerPath` of
+your own the preset refuses it rather than let it do nothing. A web build leaves the library's CSS to
+the browser, as it does yours, and an edit to a library's CSS reloads rather than hot-swaps.
+
 ## Hot reload without an Angular dev server
 
 Angular's own HMR fetches a "replace metadata" module over HTTP from a Vite dev server, which Metro
