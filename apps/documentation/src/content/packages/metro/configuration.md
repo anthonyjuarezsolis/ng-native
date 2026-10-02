@@ -115,10 +115,11 @@ lists for your own CSS.
 A package is named as it is imported, `@acme/ui`, and matched by the `node_modules/@acme/ui/` on a
 file's path, or by the `name` in the nearest `package.json` for a linked workspace library. A
 dependency of the library, under its own `node_modules`, is not the library. The list goes into
-Metro's `cacheVersion`, so changing it starts the cache afresh. The option needs the preset's transform
-worker in front of Expo's, which is how the list reaches the transformer; with a `transformerPath` of
-your own the preset refuses it rather than let it do nothing. A web build leaves the library's CSS to
-the browser, as it does yours, and an edit to a library's CSS reloads rather than hot-swaps.
+Metro's `cacheVersion`, so changing it starts the cache afresh. The option needs the preset's
+transform worker in front of Expo's, which is how the list reaches the transformer; with a
+`transformerPath` of your own the preset refuses it rather than let it do nothing. A web build
+leaves the library's CSS to the browser, as it does yours, and an edit to a library's CSS reloads
+rather than hot-swaps.
 
 ## Hot reload without an Angular dev server
 
